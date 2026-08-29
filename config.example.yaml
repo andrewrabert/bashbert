@@ -1,0 +1,95 @@
+include:
+  - ./base.yaml
+  - /etc/bxwrp/shared.yaml
+
+backend: bashkit
+
+cwd: /work
+
+username: sandbox
+
+hostname: sandbox
+
+command_not_found: |-
+  Host tools: {{ config.tools | list | join(', ') }}
+  Ask before assuming a tool is unavailable.
+
+env:
+  TZ: UTC
+  API_TOKEN: secret
+
+paths:
+  exclude:
+    - "**/.env"
+  include:
+    - "*.rs"
+  mounts:
+    - host: /home/ar/src/proj
+      vfs: /work
+      mode: rw
+      exclude:
+        - /target
+        - "*.pem"
+      include:
+        - "src/**"
+    - host: /home/ar/.config/tool
+      mode: ro
+    - vfs: /scratch
+      mode: rw
+    - vfs: /work/.env
+      mode: rm
+
+tools:
+  fmt:
+    path: cargo
+    description: format the project
+    args: [fmt]
+    cwd: /home/ar/src/proj
+    env:
+      RUST_LOG: warn
+  deploy:
+    path: /usr/local/bin/deploy.sh
+
+mcp:
+  instructions: |
+    Sandboxed shell over /home/ar/src/proj mounted at /work.
+    Changes under /work persist to the host; /scratch is ephemeral.
+  enabled: [bash, read, lint]
+  tools:
+    lint:
+      path: [cargo, clippy]
+      cwd: /home/ar/src/proj
+      env:
+        RUST_LOG: warn
+      description: Run clippy
+      stdin:
+        description: Rust source to lint.
+        required: true
+      arg:
+        fix:
+          description: Apply suggested fixes automatically.
+          args: [--fix, --allow-dirty]
+        color:
+          description: Colorize output.
+          args: [--color=always]
+          default: [--color=never]
+        cache:
+          description: Use the shared build cache.
+          args: [--cache-dir, /var/cache/build, --jobs, "8"]
+          default: [--no-cache]
+        jobs:
+          description: Parallel jobs.
+          args: [--jobs, "{{value}}"]
+        profile:
+          description: Build profile to lint under.
+          args: ["--profile={{value}}"]
+        package:
+          description: Limit linting to one workspace package.
+          args: [-p, "{{value}}"]
+      args:
+        description: Files passed through to the linter verbatim.
+        prefix: ["--"]
+    fmt:
+      path: [cargo, fmt]
+      cwd: /home/ar/src/proj
+      description: Format the project. Takes no input.
